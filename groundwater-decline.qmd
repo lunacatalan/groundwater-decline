@@ -1,0 +1,74 @@
+---
+title: "Climatic Trends and Agriculture Expansion on Declining Water Levels in Arid Aquifer, Iran"
+author: "Luna Herschenfeld-Catalan"
+date: "`r Sys.Date()`"
+output:
+  tufte::tufte_html: default
+  tufte::tufte_handout:
+    citation_package: natbib
+    latex_engine: xelatex
+  tufte::tufte_book:
+    citation_package: natbib
+    latex_engine: xelatex
+bibliography: references.bib
+---
+
+# Problem
+
+Groundwater supplies water resources for drinking water and irrigated agriculture for millions of people around the world\[CITE\]. Groundwater levels are declining around the world. This is partly do to changing climatic trends\[CITE\], where declines in precipitation is leading to declines in recharge of groundwater storage in aquifers. Over the last couple of decades, agriculture production in many areas has also increased\[CITE\]. In arid regions, agriculture is mainly fed by groundwater since there is not enough surface water available, or it does not rain enough.
+
+In the last 40 years, groundwater level declines in the Qazvin Plain, in Iran have accelerated. Past research has indicataed that agricultural production has also increased as... (Why agriculture is what I am looking at: <https://www.researchgate.net/profile/Zahra-Mousavi-16/publication/339627057_Land_subsidence_from_interferometric_SAR_andgroundwater_patterns_in_the_Qazvin_plain_Iran/links/5f604a6a299bf1d43c04ed23/Land-subsidence-from-interferometric-SAR-andgroundwater-patterns-in-the-Qazvin-plain-Iran.pdf>)
+
+This analysis can help guide groundwater management strategy by shedding light on how different factors are contributing to the rapid decline, with the hope of developing effective management strategies to protect groundwater resources.
+
+# Data Sources
+
+GROUNDWATER LEVEL
+
+Groundwater level depth data was provided by Scott Jasechko's lab. Multiple measurements were taken from 1978-2018, with 2002-2003 data missing. I used the mean values each year to calculate the change in groundwater levels from one year to the next.
+
+ANNUAL PRECIPITATION
+
+I focused on annual precipitation as a proxy for climatic trends in this analysis. This data was provided by CHELSA-EarthEnv [@Karger, D.N., Wilson, A.M., Mahony, C., Zimmermann, N.E., Jetz, W. Global daily 1km land surface precipitation based on cloud cover-informed downscaling. Scientific Data doi.org/10.1038/s41597-021-01084-6 (2021)].
+
+AGRICULTURE PRODUCTION
+
+The biggest hurtle was identifying an effective proxy for agricultural production. My first attempt was using **Area Equipped for Irrigation** (AEI) as a measure of groundwater level decline. This data was produced by Piyush Mehta et al.[@Mehta, P., Siebert, S., Kummu, M., Deng, Q., Ali, T., Marston, L., Xie, W., & Davis, K. (2023). Global Area Equipped for Irrigation Dataset 1900-2015 (Version 3) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7809342] using sub-national irrigation statistics that were aggregated to 5-year periods to develop a gridded map at 5 arc-min resolution of area equipped for irrigation. I used data from 1985-2015, and accessed them here: [Zenodo](https://zenodo.org/records/7809342).
+
+However, I was unhappy with the coarseness of this dataset so I turned to Soil Adjusted Vegetative Index (SAVI)[^2] measurements over time to calculate a change in agricultural area from 1984-2019. I accessed this data in Python from the Microsoft Planetary Computer. My Python workbook is stored as `agriculture_landsat.ipynb`, where you can access the code I used to calcualte the SAVI statistics using Landsat images. 
+
+I clipped both datasets with a shapefile of the Qazvin Aquifer that I created in ArcGIS using a map from [@Mirhashemi, S. H., & Mirzaei, F. (2021). Extracting association rules from changes in aquifer drawdown in irrigation areas of Qazvin plain, Iran. Groundwater for Sustainable Development, 12, 100495.] The image and the shapefile can be accessed in this project repository. 
+
+[^2] I used NDVI initially but realized that there was very sparse vegetation in the area and so I would want to account for the soil reflectance. 
+
+
+# Basin Analysis Approach
+
+I wanted to compare the yearly change in groundwater level, precipitation, and agricultural production in the Qazvin plain. To to this I first had to clean the depth to groundwater data so that I could work with the yearly mean measurement. I accessed the year with `separate_wider_delim()` and then used the `group_by()` and `summarize()` functions to generate a yearly mean depth to groundwater. However, I was interested in the change, so I used a first difference estimator to calculate the change in groundwater depth each year. 
+
+I also only wanted to use the AEI over the Qazvin Plain, so I used `crop()` to clip the AEI raster stack with the qazvin aquifer shapefile I created. Then I calculated summary statistics across each raster in the stack. I was then able to join the change in groundwater level data with the precipitation and irrigation data.  
+
+## Multiple Linear Regression with AEI mean
+
+I conducted an OLS multiple linear regression to look at how AEI and precipitation impacted the change in groundwater level. The results of the OLS regression are shown in Figure XYZ. I used `ggplot()` to create a scatter plot of the mean AEI and groundwater level change over time. Then I used `geom_smooth()` to plot a multiple linear regression.  
+
+  insert REGRESSION HERE
+  
+
+The slope of the mean AEI indicates that for every 1 ha increase in AEI, there is a 0.01 m decrease in groundwater level. The results in Table.1 show that the effect of AEI has a p-value of 0.032, which is small enough that there is statistical significance of this analysis. However, the p-value for annual precipitation is 0.591, meaning that there can be no statistical significance taken from the role of precipitation on grondwater level change. This model had an R^2 value of 0.50 which means it explained 50% of the variation in groundwater level change. 
+
+  insert REGRESSION TABLES HERE 
+
+Then I ran a simple linear regression model to see the effect of just AEI mean. The results in Table.2 show that the p-value is 0.02, which increases our confidence level that AEI mean is statistically significant. Here, the R^2 value has increased to 0.56, which means this model explains 56% of the variation in groundwater level change. Given the higher R^2 value, this model is more useful than the one that includes precipitaion. 
+
+## Multiple Linear Regression with Landsat Data
+
+I was unhappy with the temporal reolution of the irrigation data, since it was an aggregate in 5-year chunks that was already accessing data samples. To have more confidence in my results, I calculated the SAVI in a buffer around the well being used to to collect the groundwater level data, and across the aquifer. 
+
+insert LANDSAT CROPPED IMAGES HERE
+
+
+
+
+
+
