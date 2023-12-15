@@ -6,4 +6,12 @@
 .bib
 .DS_Store
 data/AEI_ASC
-.xlsx
+groundwater_time_series.xlsx
+groundwater_level_ts.R
+annual_precip.xlsx
+qazvin_aquifer_image.png
+mod_ir.png
+mod_ir_precip.png
+mod_savi.png
+references.bib
+buffer_aquifer.png

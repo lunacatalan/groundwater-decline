@@ -1,5 +1,5 @@
 # Climatic Trends and Agriculture Expansion on Declining Water Levels in Arid Aquifer, Iran
-This analysis can help guide groundwater management strategy by shedding light on how different factors are contributing to the rapid decline, with the hope of developing effective management strategies to protect groundwater resources.
+Exploring factors contributing to groundwater level decline in the Qazvin Aquifer, from 1985-2019. This analysis can help guide groundwater management strategy by shedding light on how different factors are contributing to the rapid decline, with the hope of developing effective management strategies to protect groundwater resources.
 
 ## Goals
 - Identify the role of precipitation trends and changes in agriculture production on groundwater level declines in Qazvin Aquifer, Iran

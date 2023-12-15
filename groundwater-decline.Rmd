@@ -47,6 +47,8 @@ The summary statistics are stored in the `ag_density` folder:
 I clipped both data sets with a shapefile of the Qazvin Aquifer that I created in ArcGIS using a map from Mirhashemi & Mirzaei (2021) The image and the shapefile can be accessed in this project repository saved as `qazvin`.
 - The aquifer shapefile is stored in the `data` folder as `qazvin`
 
+![The clipped landsat images look like this](/Users/lunacatalan/Documents/dev/eds222/project/groundwater-decline/buffer_aquifer.png)
+
 # Prepare the Data
 
 ### Load in the libraries 
