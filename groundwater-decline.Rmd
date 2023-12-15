@@ -30,7 +30,7 @@ Groundwater level depth data was provided by Scott Jasechko's lab. Multiple meas
 
 ANNUAL PRECIPITATION
 
-I focused on annual precipitation as a proxy for climatic trends in this analysis. This data was provided by CHELSA-EarthEnv [@Karger, D.N., Wilson, A.M., Mahony, C., Zimmermann, N.E., Jetz, W. Global daily 1km land surface precipitation based on cloud cover-informed downscaling. Scientific Data doi.org/10.1038/s41597-021-01084-6 (2021)].
+I focused on annual precipitation as a proxy for climatic trends in this analysis. This data was provided by CHELSA-EarthEnv (Karget et al. 2021).
 - Stored in `data` as `annual_precip.xlsx`
 
 AGRICULTURE PRODUCTION
@@ -440,18 +440,6 @@ I calculated a confidence interval and am 95% confident that the true change in 
 # Conclusions and Future Analysis
 
 This analysis showed that agricultural production (proxied by **area equipped for irrigation** and **soil adjusted vegetative index**) had a greater impact on groundlevel changes in the Qazvin Plain aquifer than precipitation.
-
-**IMPORTANT LIMITATIONS**
-
-In this analysis, I was only able to calculate the relationship between median SAVI and groundwater level change. The positive relationship between these variables is surprising, since I expected that an increase in SAVI would lead to greater negative groundwater change. My analysis does not take into account a possible **lag** in the effect of groundwater-fed irrigation on crop production (which influences SAVI values) and groundwater level changes. This relationship may also be explained by a possible quadratic fit for the median SAVI values over time. Around the early 2000's, the median SAVI values begin to show an upward trend. This is supported by the literature that indicates that agriculture activities have become more expansive. Given more time I would have liked to explore this potential trend.
-
-Furthermore, I used available literature to decide on the month that I would select to investigate the soil adjusted vegetation index. I selected the month when a majority of the crops were going to be harvested, as I assumed that it would be the best measure of amount of agricultural production. A more specific measure would involve analyzing landsat images over the whole year, over time, to see what the reflectance values for that specific area were, and how those values correlated with crop production on the ground. I was unable to conduct that land classification.
-
-**ANALYSIS OF GROUNDWATER DECLINES**
-
-In a future analysis I would like to collect depth to groundwater data for multiple wells over time, and see if there is a spatial relationship with changes in agriculture over that same time period (eg. shifting crop types, expansion or decline of area cultivated, irrigation system). Ideally, I could group these aquifers into climate types (eg. arid) so that any relationships could be understood within the type of climate that the aquifer is in. This would provide insight into the mechanisms of groundwater decline and a roadmap to uncover groundwater management strategies in areas where there is either no groundater decline or levels are in recovery.
-
-It would also be interesting to obtain more data on groundwater level from wells around different aquifers and use Kriging to identify the spatial correlation between groundwater levels and different land cover types around the aquifer. Identifying how different land-cover types impact groundwater can be important considerations for future development.
 
 #### Data Availability
 
