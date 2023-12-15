@@ -1,6 +1,6 @@
 ---
 title: "Climatic Trends and Agriculture Expansion on Declining Water Levels in Arid Aquifer, Iran"
-author: "Luna Herschenfeld-Catalan"
+author: "Luna Herschenfeld-Catalán"
 date: "`r Sys.Date()`"
 output:
   tufte::tufte_html: default
@@ -35,40 +35,409 @@ AGRICULTURE PRODUCTION
 
 The biggest hurtle was identifying an effective proxy for agricultural production. My first attempt was using **Area Equipped for Irrigation** (AEI) as a measure of groundwater level decline. This data was produced by Piyush Mehta et al.[@Mehta, P., Siebert, S., Kummu, M., Deng, Q., Ali, T., Marston, L., Xie, W., & Davis, K. (2023). Global Area Equipped for Irrigation Dataset 1900-2015 (Version 3) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7809342] using sub-national irrigation statistics that were aggregated to 5-year periods to develop a gridded map at 5 arc-min resolution of area equipped for irrigation. I used data from 1985-2015, and accessed them here: [Zenodo](https://zenodo.org/records/7809342).
 
-However, I was unhappy with the coarseness of this dataset so I turned to Soil Adjusted Vegetative Index (SAVI)[^2] measurements over time to calculate a change in agricultural area from 1984-2019. I accessed this data in Python from the Microsoft Planetary Computer. My Python workbook is stored as `agriculture_landsat.ipynb`, where you can access the code I used to calcualte the SAVI statistics using Landsat images. 
+However, I was unhappy with the coarseness of this dataset so I turned to Soil Adjusted Vegetative Index (SAVI)\[\^2\] measurements over time to calculate a change in agricultural area from 1984-2019. I accessed this data in Python from the Microsoft Planetary Computer. My Python workbook is stored as `agriculture_landsat.ipynb`, where you can access the code I used to calcualte the SAVI statistics using Landsat images.
 
-I clipped both datasets with a shapefile of the Qazvin Aquifer that I created in ArcGIS using a map from [@Mirhashemi, S. H., & Mirzaei, F. (2021). Extracting association rules from changes in aquifer drawdown in irrigation areas of Qazvin plain, Iran. Groundwater for Sustainable Development, 12, 100495.] The image and the shapefile can be accessed in this project repository. 
+I clipped both datasets with a shapefile of the Qazvin Aquifer that I created in ArcGIS using a map from [@Mirhashemi, S. H., & Mirzaei, F. (2021). Extracting association rules from changes in aquifer drawdown in irrigation areas of Qazvin plain, Iran. Groundwater for Sustainable Development, 12, 100495.] The image and the shapefile can be accessed in this project repository.
 
-[^2] I used NDVI initially but realized that there was very sparse vegetation in the area and so I would want to account for the soil reflectance. 
-
+\[\^2\] I used NDVI initially but realized that there was very sparse vegetation in the area and so I would want to account for the soil reflectance.
 
 # Basin Analysis Approach
 
-I wanted to compare the yearly change in groundwater level, precipitation, and agricultural production in the Qazvin plain. To to this I first had to clean the depth to groundwater data so that I could work with the yearly mean measurement. I accessed the year with `separate_wider_delim()` and then used the `group_by()` and `summarize()` functions to generate a yearly mean depth to groundwater. However, I was interested in the change, so I used a first difference estimator to calculate the change in groundwater depth each year. 
+I wanted to compare the yearly change in groundwater level, precipitation, and agricultural production in the Qazvin plain. To to this I first had to clean the depth to groundwater data so that I could work with the yearly mean measurement. I accessed the year with `separate_wider_delim()` and then used the `group_by()` and `summarize()` functions to generate a yearly mean depth to groundwater. However, I was interested in the change, so I used a first difference estimator to calculate the change in groundwater depth each year.
 
-I also only wanted to use the AEI over the Qazvin Plain, so I used `crop()` to clip the AEI raster stack with the qazvin aquifer shapefile I created. Then I calculated summary statistics across each raster in the stack. I was then able to join the change in groundwater level data with the precipitation and irrigation data.  
+I also only wanted to use the AEI over the Qazvin Plain, so I used `crop()` to clip the AEI raster stack with the qazvin aquifer shapefile I created. Then I calculated summary statistics across each raster in the stack. I was then able to join the change in groundwater level data with the precipitation and irrigation data.
+
+```{r include = FALSE, message = FALSE, warning = FALSE}
+# load libraries
+library(foreign)
+library(tidyverse)
+library(here)
+library(sf)
+library(terra)
+library(spData)
+library(geodata)
+library(modelr)
+library(ggplot2)
+library(knitr)
+library(broom)
+library(patchwork)
+library(lubridate) # for dates
+library(tsibble)
+library(feasts)
+library(sjPlot)
+library(forecast)
+library(fabletools)
+```
+
+```{r include = FALSE, message = FALSE, warning = FALSE}
+gw_level_total <- readxl::read_xlsx(here("data/groundwater_time_series.xlsx")) %>% 
+  select(Year, WaterLevel) %>% # select years
+  separate_wider_delim(col = Year, 
+                       ".", # separate the months
+                       names = c("Year", "Month")) %>% 
+  select(!Month) %>% # remove the decimal column 
+  mutate_at(vars(Year), as.numeric)
+
+
+# these are the mean depth to groundwater level
+gw_mean <- gw_level_total %>% 
+  group_by(Year) %>% 
+  summarize(mean = mean(WaterLevel)) %>% 
+  rename(year = Year) 
+
+mean_2 = gw_mean$mean[1:38]
+mean_2  <- c(0,mean_2 )
+mean_2 <- data.frame(year = gw_mean$year,
+                     mean_2 = mean_2)
+
+gw_mean <-  gw_mean %>% 
+  left_join(mean_2)
+
+gw_change <- gw_mean %>% 
+  mutate(change = as.numeric(mean_2) - (as.numeric(mean))) %>% 
+  slice(-1)
+
+#------ Precipitation Data ------#
+
+precip <- readxl::read_xlsx(here("data/annual_precip.xlsx")) %>%
+  select(!StnID) # remove column
+
+
+#------ Irrigation Data ------#
+qazvin_aquifer <- st_read(here('data/qazvin/qazvin.shp'))
+
+qazvin_box <- data.frame(name = c("1", "2", "3", "4"),
+                         long = c(49.31937729228426, 49.31937729228426, 51.12523623049739, 51.12523623049739),
+                         lat = c(36.493217304744505, 35.52665079679184, 35.52665079679184, 36.493217304744505))
+
+qazvin_box = st_polygon(list(
+  cbind(
+    qazvin_box$long[c(1, 2, 3, 4, 1)],
+    qazvin_box$lat[c(1, 2, 3, 4, 1)]
+  )
+))
+
+# list files for each band, including the full file path
+filelist <- list.files(here("data/AEI_ASC/"), # say what folder to read the files in 
+                       full.names = TRUE)
+
+# read in and store as a raster stack
+asc_1900_2015 <- rast(filelist) 
+
+# need to set crs
+qazvin_box <- st_sfc(qazvin_box,
+                     crs = st_crs(asc_1900_2015))
+
+irrigation_qazvin <- asc_1900_2015 %>% 
+  crop(., qazvin_box)
+
+names(irrigation_qazvin) <- c("1900", "1910", "1920", "1930", "1940", "1950", "1960", "1970", "1980", "1985", "1990", "1995", "2000", "2005", "2010", "2015")
+
+# transform shapefle to crs of irrigation map
+qazvin_aquifer <- st_transform(qazvin_aquifer, 
+                               crs = st_crs(irrigation_qazvin))
+
+ir_aq <- irrigation_qazvin %>% 
+  crop(., qazvin_aquifer)
+
+plot(ir_aq)
+ir_aq
+
+
+ir_df <- as.data.frame(ir_aq) %>% 
+  pivot_longer(1:16, 
+               names_to = "year",
+               values_to = "values") %>% 
+  mutate_at(vars(year), as.numeric)
+
+
+ir_summary <- ir_df %>% 
+  group_by(year) %>% 
+  mutate(ir_mean = mean(values, na.rm = TRUE),
+         ir_sd = sd(values, na.rm = TRUE),
+         ir_max = max(values, na.rm = TRUE),
+         ir_median = median(values, na.rm = TRUE),
+         ir_sum = sum(values, na.rm = TRUE)) %>% 
+  select(!values) %>% 
+  slice(16)
+
+#------- SAVI and NDVI Data ------#
+quartile_names <- c("min_b", "q1_b", "median_b", "q3_b", "max_b", "sum_b", "mean_b")
+
+
+buffer_ag <- read_csv(here("data/ag_density/buffer_df.csv")) %>% 
+  rename("quartiles" = "...1") %>% 
+  replace("quartiles", quartile_names) %>% 
+  pivot_longer(col = 2:131,
+               names_to = 'date', 
+               values_to = 'values') %>% 
+  separate_wider_delim(cols = 2, 
+                       delim = ">_", names = c("date", "type")) %>% 
+  separate(col = 2, 
+           into = "string",
+           sep = "_02") %>% 
+  separate_wider_delim(cols = 2, delim = "165035_", names = c("left", "date")) %>% 
+  select(!left)
+
+savi_date <- ymd(buffer_ag$date, format="%Y%m%d") 
+savi_date <- savi_date[-length(savi_date)]
+
+buffer_ag <- buffer_ag %>% 
+  cbind(savi_date) %>% 
+  select(quartiles,
+         date = savi_date,
+         values,
+         type) %>% 
+  filter(buffer_ag$quartiles != "min")
+
+buffer_years <- buffer_ag %>% 
+  separate_wider_delim(cols = 2, 
+                       delim = "-05-", 
+                       names = c("year", "md")) %>% 
+  select(!md) %>% 
+  group_by(year, quartiles, type) %>% 
+  summarize(val = mean(values)) %>% 
+  mutate_at(vars(year), as.numeric) %>% 
+  pivot_wider(names_from = quartiles,
+              values_from = val) %>% 
+  ungroup()
+
+# store just the NDVI values 
+buffer_ndvi <- buffer_years %>% 
+  filter(type %in% "ndvi") %>% 
+  rename(qi_bn = "q1_b", 
+         median_bn = "median_b", 
+         q3_bn = "q3_b", 
+         max_bn = "max_b", 
+         sum_bn = "sum_b", 
+         mean_bn = "mean_b")
+
+# store just the SAVI
+buffer_savi <- buffer_years %>% 
+  filter(type %in% "savi") %>% 
+  rename(qi_bs = "q1_b", 
+         median_bs = "median_b", 
+         q3_bs = "q3_b", 
+         max_bs = "max_b", 
+         sum_bs = "sum_b", 
+         mean_bs = "mean_b")
+
+
+quartile_names <- c("min_a", "q1_a", "median_a", "q3_a", "max_a", "sum_a", "mean_a")
+
+
+aquifer_ag <- read_csv(here("data/ag_density/aq_df.csv")) %>% 
+  rename("quartiles" = "...1") %>% 
+  replace("quartiles", quartile_names) %>% 
+  pivot_longer(col = 2:131,
+               names_to = 'date', 
+               values_to = 'values') %>% 
+  separate_wider_delim(cols = 2, 
+                       delim = ">_", names = c("date", "type")) %>% 
+  separate(col = 2, 
+           into = "string",
+           sep = "_02") %>% 
+  separate_wider_delim(cols = 2, delim = "165035_", names = c("left", "date")) %>% 
+  select(!left)
+
+savi_date <- ymd(buffer_ag$date, format="%Y%m%d") 
+savi_date <- savi_date[-length(savi_date)]
+
+aquifer_ag <- aquifer_ag %>% 
+  cbind(savi_date) %>% 
+  select(quartiles,
+         date = savi_date,
+         values,
+         type) %>% 
+  filter(aquifer_ag$quartiles != "min")
+
+aquifer_years <- aquifer_ag %>% 
+  separate_wider_delim(cols = 2, 
+                       delim = "-05-", 
+                       names = c("year", "md")) %>% 
+  select(!md) %>% 
+  group_by(year, quartiles, type) %>% 
+  summarize(val = mean(values)) %>% 
+  mutate_at(vars(year), as.numeric) %>% 
+  pivot_wider(names_from = quartiles,
+              values_from = val) %>% 
+  ungroup()
+
+aquifer_ndvi <- aquifer_years %>% 
+  filter(type %in% "ndvi") %>% 
+  rename(qi_an = "q1_a", 
+         median_an = "median_a", 
+         q3_an = "q3_a", 
+         max_an = "max_a", 
+         sum_an = "sum_a", 
+         mean_an = "mean_a")
+
+aquifer_savi <- aquifer_years %>% 
+  filter(type %in% "savi") %>% 
+  rename(qi_as = "q1_a", 
+         median_as = "median_a", 
+         q3_as = "q3_a", 
+         max_as = "max_a", 
+         sum_as = "sum_a", 
+         mean_as = "mean_a")
+
+
+#------- All data Together ------#
+qazvin_clean <- precip %>% 
+  left_join(gw_change, by = "year") %>% 
+  left_join(ir_summary, by = "year") %>% 
+  left_join(aquifer_ndvi, by = "year") %>% 
+  left_join(aquifer_savi, by = "year") %>%
+  left_join(buffer_ndvi, by = "year") %>% 
+  left_join(buffer_savi, by = "year") %>%
+  rename(gw_level = mean,
+         annual_precip = total_annual_precip)
+
+
+
+```
 
 ## Multiple Linear Regression with AEI mean
 
-I conducted an OLS multiple linear regression to look at how AEI and precipitation impacted the change in groundwater level. The results of the OLS regression are shown in Figure XYZ. I used `ggplot()` to create a scatter plot of the mean AEI and groundwater level change over time. Then I used `geom_smooth()` to plot a multiple linear regression.  
+I conducted an OLS multiple linear regression to look at how AEI and precipitation impacted the change in groundwater level. The results of the OLS regression are shown in Figure XYZ. I used `ggplot()` to create a scatter plot of the mean AEI and groundwater level change over time. Then I used `geom_smooth()` to plot a linear regression to see how these variables changed over time. The groundwater change slope is negative, and the AEI slope is positive.
 
-  insert REGRESSION HERE
-  
+```{r include = FALSE, message = FALSE, warning = FALSE}
+scale = 100
 
-The slope of the mean AEI indicates that for every 1 ha increase in AEI, there is a 0.01 m decrease in groundwater level. The results in Table.1 show that the effect of AEI has a p-value of 0.032, which is small enough that there is statistical significance of this analysis. However, the p-value for annual precipitation is 0.591, meaning that there can be no statistical significance taken from the role of precipitation on grondwater level change. This model had an R^2 value of 0.50 which means it explained 50% of the variation in groundwater level change. 
+ir_gw_plot <- ggplot(qazvin_clean, aes(x = year, y = change)) + 
+  geom_line(aes(color = "Change in Groundwater Level")) +
+  geom_point(aes(y = ir_mean/scale,
+                 color = "Irrigation")) +
+  scale_y_continuous(sec.axis = sec_axis(~.*scale)) +
+  stat_smooth(aes(y = change),method = "lm", formula = y ~ x, size = 1,
+              color = "#D84860FF") +
+  stat_smooth(aes(y = ir_mean/scale),method = "lm", formula = y ~ x, size = 1, 
+              color = "#0076C0FF") +
+  labs(x = "Year",
+       y = "Change in Groundwater Level",
+       color = "",
+       caption = "Fig.1 Plot showing AEI and groundwater level change with linear regression trendline over time in the Qazvin plain.") +
+  scale_y_continuous( "Average Change in Groundwater Level (m)", 
+                      sec.axis = sec_axis(~ . * 100, 
+                                          name = "Mean Area Equipped for Irrigation (ha)")) +
+  theme_minimal() +
+  theme( axis.line.y.right = element_line(color = "#0076C0FF"), 
+         axis.ticks.y.right = element_line(color = "#0076C0FF"),
+         axis.text.y.right = element_text(color = "#0076C0FF"),
+         axis.title.y.right = element_text(color = "#0076C0FF"),
+         axis.line.y.left = element_line(color = "#D84860FF"), 
+         axis.ticks.y.left = element_line(color = "#D84860FF"),
+         axis.text.y.left = element_text(color = "#D84860FF"),
+         axis.title.y.left  = element_text(color = "#D84860FF")) +
+   scale_color_manual(values = c("#D84860FF", "#0076C0FF"))
 
-  insert REGRESSION TABLES HERE 
 
-Then I ran a simple linear regression model to see the effect of just AEI mean. The results in Table.2 show that the p-value is 0.02, which increases our confidence level that AEI mean is statistically significant. Here, the R^2 value has increased to 0.56, which means this model explains 56% of the variation in groundwater level change. Given the higher R^2 value, this model is more useful than the one that includes precipitaion. 
+mod_ir_precip <- lm(change ~ ir_mean + annual_precip, data = qazvin_clean) %>% 
+  summary() %>% 
+  tab_model(title = "groundwater change ~ irrigation + annual precipitation")
 
-## Multiple Linear Regression with Landsat Data
+mod_ir <- lm(change ~ ir_mean, data = qazvin_clean) %>% 
+  summary() %>% 
+  tab_model(title = "groundwater change ~ irrigation")
+mod_ir
+```
 
-I was unhappy with the temporal reolution of the irrigation data, since it was an aggregate in 5-year chunks that was already accessing data samples. To have more confidence in my results, I calculated the SAVI in a buffer around the well being used to to collect the groundwater level data, and across the aquifer. 
+```{r include = TRUE, message = FALSE, warning = FALSE, fig.height=5, fig.width=10}
+ir_gw_plot
+```
 
-insert LANDSAT CROPPED IMAGES HERE
+The result of the multiple linear regression model are in Table 1, and they indicate that for every 1 ha increase in AEI, there is a 0.01 m decrease in groundwater level. The effect of AEI has a p-value of 0.032, which is small enough that there is statistical significance of this analysis. However, the p-value for annual precipitation is 0.591, meaning that there can be no statistical significance taken from the role of precipitation on grondwater level change. This model had an R\^2 value of 0.50 which means it explained 50% of the variation in groundwater level change.
+
+![Table 1: Results of Multiple Linear Regression of Area Equipped for Irrigation and Precipitation on Groundwater Level Change](/Users/lunacatalan/Documents/dev/eds222/project/groundwater-decline/mod_ir_precip.png)
+
+![Table 2: Results of Simple Linear Regression of Area Equipped on Irrigation on Groundwater Level Change](/Users/lunacatalan/Documents/dev/eds222/project/groundwater-decline/mod_ir.png)
+
+Then I ran a simple linear regression model to see the effect of just AEI mean. The results in Table 2 show that the p-value is 0.02, which increases our confidence level that AEI mean is statistically significant. Here, the R\^2 value has increased to 0.56, which means this model explains 56% of the variation in groundwater level change. Given the higher R\^2 value, this model is more useful than the one that includes precipitation.
+
+![Figure 2: Buffer and Aquifer crop of Landsat satellite image](/Users/lunacatalan/Documents/dev/eds222/project/groundwater-decline/buffer_aquifer.png){width = 50px}
+
+I was unhappy with the temporal resolution of the irrigation data, since it was an aggregate in 5-year chunks that was already accessing data samples. To have more confidence in my results, I calculated the SAVI from the area of a buffer around the well being used to to collect the groundwater level data, and across the aquifer in Python. Then I extracted summary statistics from each raster.
+
+```{r include = FALSE, message = FALSE, warning = FALSE}
+savi_plot <- ggplot(qazvin_clean, aes(x = year, y = change)) + 
+  geom_line(aes(color = "Change in Groundwater Level")) +
+  geom_point(aes(y = median_bs*scale,
+                 color = "Median Soil Adjusted Vegetative \nIndex in Buffer")) +
+  stat_smooth(aes(y = change),method = "lm", formula = y ~ x, size = 1,
+              color = "#D84860FF") +
+  stat_smooth(aes(y = median_bs*scale),method = "lm", formula = y ~ x, size = 1, 
+              color = "#2CB11BFF") +
+  labs(x = "Year",
+       y = "Change in Groundwater Level",
+       color = "",
+       caption = "Fig. XYZ Simple linear regression plot showing Median SAVI (index/pixel) and groundwater level change trend over time in the Qazvin plain.") +
+  scale_y_continuous( "Average Change in Groundwater Level (m)", 
+                      sec.axis = sec_axis(~ . * .01, 
+                                          name = "Median SAVI (index/pixel)")) +
+  theme_minimal() +
+  theme( axis.line.y.right = element_line(color = "#2CB11BFF"), 
+         axis.ticks.y.right = element_line(color = "#2CB11BFF"),
+         axis.text.y.right = element_text(color = "#2CB11BFF"),
+         axis.title.y.right = element_text(color = "#2CB11BFF"),
+         axis.line.y.left = element_line(color = "#D84860FF"), 
+         axis.ticks.y.left = element_line(color = "#D84860FF"),
+         axis.text.y.left = element_text(color = "#D84860FF"),
+         axis.title.y.left  = element_text(color = "#D84860FF")) +
+   scale_color_manual(values = c("#D84860FF", "#2CB11BFF"))
+
+ggplot(data = qazvin_clean, 
+       aes(x = median_bs,
+           y = change,
+           color = year)) +
+  geom_point() +
+  stat_smooth(method = "lm", formula = y ~ x, size = 1,
+              color = "#D84860FF",
+              se = FALSE) +
+  stat_smooth(method = "lm", formula = y ~ x + I(x^2), size = 1, 
+              color = "#2CB11BFF",
+              se = FALSE)
 
 
+# these are correlated
+mod_median <- lm(change ~ median_bs, data = qazvin_clean) %>% 
+  summary() %>% 
+  tab_model()
+
+```
+
+```{r include = TRUE, message = FALSE, warning = FALSE}
+savi_plot
+```
 
 
+I fit a linear regression model to the data as seen in Fig XYZ. This graph indicates that over time the median index value around the groundwater well was decreasing. Since the scale is from 0-1, the table results make more snese when you divide by 10. Reading it that way, for every 0.1 incrase in the SAVI index, groundwater levelsThe results of the quadratic regression are shown in Table 3, and show a statistically significant effect (p-value of 0.001) of the median SAVI in the buffer on the groundwater levels. Furthermore, the R\^2 value is 0.30, which means this model accounts for 30% of the variation in groundwater level change.
 
+![Table 3: Results of Simple Linear Regression of median Soil Adjusted Vegetation Index (SAVI) on Irrigation on Groundwater Level Change](/Users/lunacatalan/Documents/dev/eds222/project/groundwater-decline/mod_savi.png)
 
+HYPOTHESIS TESTING
+
+Due to the statistical significance of the median soil adjusted vegetation index and the non-statistical significance of the annual precipitation, we fail to accept the null hypothesis.
+
+*Null Hypothesis:* In the Qazvin Plain, there is no difference of the impact of annual precipitaion and agricultural production changes on groundwater level changes from 1984-2019.
+
+*Alternative Hypothesis:* In the Qazvin Plain, there is a difference of the impact of annual precipitation and agricultural production on groundwater level changes from 1984-2019.
+
+CONFIDENCE INTERVAL
+
+I calculated a confidence interval and am 95% confident that the true change in groundwater level for every 0.1 increase in the median SAVI, is within the range of 1.6 and 5.5m.
+
+# Conclusions and Future Analysis
+
+This analysis showed that agricultural production (proxied by **area equipped for irrigation** and **soil adjusted vegetative index**) had a greater impact on groundlevel changes in the Qazvin Plain aquifer than precipitation.
+
+IMPORTANT LIMITATIONS
+
+In this analysis, I was only able to calculate the relationship between median SAVI and groundwater level change. The positive relationship between these variables is surprising, since I expected that an increase in SAVI would lead to greater negative groundwater change. My analysis does not take into account a possible **lag** in the effect of groundwater-fed irrigation on crop production (which influences SAVI values) and groundwater level changes. This relationship may also be explained by a possible quadratic fit for the median SAVI values over time. Around the early 2000's, the median SAVI values begin to show an upward trend. This is supported by the literature that indicates that AG IS INCREASING\[CITE\]. Given more time I would have liked to explore this potential trend.
+
+Furthermore, I used available literature to decide on the month that I would select to investigate the soil adjusted vegetative index. I selected the month when a majority of the crops were going to be harvested, as I assumed that it would be the best measure of amount of agricultural production. A more specific measure would involve analysing landsat images over the whole year, over time, to see what the reflectance values for that specific area were, and how those values correlated with crop production on the ground. I was unable to conduct that land classification.
+
+ANALYSIS OF GROUNDWATER DECLINES
+
+In a future analysis I would like to collect depth to groundwater data for multiple wells over time, and see if there is a spatial relationship with changes in agriculture over that same time period (eg. shifting crop types, expansion or decline of area cultivated, irrigation system). Ideally, I could group these aquifers into climate types (eg. arid) so that any relationships could be understood within the type of climate that the aquifer is in. This would provide insight into the mechanisms of groundwater decline and a roadmap to uncover groundwater management strategies in areas where there is either no groundater decline or levels are in recovery.
+
+It would also be interesting to obtain more data on groundwater level from wells around different aquifers and use Kriging to identify the spatial correlation between groundwater levels and different land cover types around the aquifer. Identifying how different landcover types impact groundwater can be important considerations for future development.
